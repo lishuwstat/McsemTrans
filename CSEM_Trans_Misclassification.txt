@@ -1,0 +1,284 @@
+
+################################
+time1= date()
+
+## specify the following parameters
+
+# r ## parameter in the transformation function
+
+# alpha ## sensitivity
+
+# beta ## specificity
+
+# n ## sample size
+# p ## dimension of the covariate vector
+# x  ## covarite matrix, n by p
+# Y ## testing result, 1 for left censoring, 0 for right censoring, n by 1
+# C ## observation time, n by 1
+
+max.loops = 1000
+
+tol = 0.001 ### convergence criterion
+
+#####################################
+##### necessary function
+#####################################
+
+G.fun <- function(u){
+      if(r > 0){
+      results = log(((1+r*u)<=0)*10^(-3)+(1+r*u>0)*(1+r*u))/r
+      } else results = u
+      return(results)
+}
+
+
+G.inv <- function(u){
+   if (r > 0) {
+      results = (exp(u*r)-1)/r
+      } else results = u
+      return(results)
+}
+
+
+CSEM_M <-function(n, p, k, x, Ind.C, alpha, beta ){
+
+loops = 0
+
+diff.zeta = 100
+
+gamma = alpha + beta - 1
+
+theta.ini = rep(0,p)
+
+lambda.ini = rep(1/n,k)
+
+theta.hat = theta.ini
+
+lambda.hat = lambda.ini
+
+############ judge start ##############
+
+while(diff.zeta >= tol && loops < max.loops){
+
+#################
+
+############   E-Step
+
+W = rowSums(matrix(rep(lambda.hat, each=n), n, k)*
+matrix(rep(exp(as.matrix(x)%*%as.matrix(theta.hat)),k),n,k)*Ind.C) #### n by 1
+
+S = exp(-G.fun(W))
+
+E.Delta = Y*alpha*(1-S)/(alpha-gamma*S) + (1-Y)*(1-alpha)*(1-S)/(1-alpha+gamma*S)
+
+if(r !=0){
+E.mu = E.Delta*(1-(r*W+1)^(-r^(-1)-1))/(1-S) +  (1- E.Delta)*(r*W+1)^(-r^(-1)-1)/S #### n by 1
+      }else E.mu = rep(1,n)
+
+E.Z = matrix(rep(lambda.hat, each=n), n, k)*matrix(rep(exp(as.matrix(x)%*%as.matrix(theta.hat)),k),n,k)*
+      (E.Delta*(1-S)^(-1)*Ind.C + matrix(rep(E.mu,k),n,k)*(1-Ind.C))    ####  n by k
+
+########################
+
+###########M-step
+
+lambda.est = apply(E.Z,2,sum)/sum(E.mu*exp(as.matrix(x)%*%as.matrix(theta.hat)))
+
+if(any(is.na(lambda.est))) lambda.est = lambda.ini
+
+################################################################
+###################################################################
+
+num1 = t(x)%*%as.matrix(E.mu*exp(as.matrix(x)%*%as.matrix(theta.hat))) #### p by 1
+denom1 = sum(E.mu*exp(as.matrix(x)%*%as.matrix(theta.hat)))   #####  1 by 1
+U.1 = t(as.matrix(x - matrix(rep(num1/denom1,each=n),n,p)))%*%as.matrix(apply(
+as.matrix(E.Z),1,sum))
+
+II.1 = -(t(as.matrix(x))%*%(as.vector(E.mu*exp(x%*%theta.hat))*x)*denom1-
+as.matrix(num1)%*%t(as.matrix(num1)))/denom1^2
+
+I.1 = sum(E.Z)*II.1
+
+theta.est = theta.hat - solve(I.1)%*%U.1
+
+if(any(is.na(theta.est))) theta.est = theta.ini
+
+######################################################################
+#########################################################################
+
+diff.theta = abs(theta.est-theta.hat)
+diff.lambda = abs(lambda.est-lambda.hat)
+
+diff.zeta = max(diff.theta, diff.lambda)
+
+theta.hat = theta.est
+lambda.hat = lambda.est
+
+loops = loops+1
+
+}
+
+######### judge end #########
+
+return(theta.hat)
+
+}
+
+
+##################################################
+
+
+profile <- function(mu){
+
+theta.hat = mu
+
+lambda.ini = rep(1/n,k)
+
+lambda.hat = lambda.ini
+
+loops = 0
+
+diff.lambda = 100
+
+
+gamma = alpha + beta - 1
+
+############ judge start ##############
+
+while(diff.lambda >= tol && loops < max.loops){
+
+#################
+
+############   E-Step
+
+W = rowSums(matrix(rep(lambda.hat, each=n), n, k)*
+matrix(rep(exp(as.matrix(x)%*%as.matrix(theta.hat)),k),n,k)*Ind.C) #### n by 1
+
+S = exp(-G.fun(W))
+
+E.Delta = Y*alpha*(1-S)/(alpha-gamma*S) + (1-Y)*(1-alpha)*(1-S)/(1-alpha+gamma*S)
+
+if(r !=0){
+E.mu = E.Delta*(1-(r*W+1)^(-r^(-1)-1))/(1-S) +  (1- E.Delta)*(r*W+1)^(-r^(-1)-1)/S #### n by 1
+      }else E.mu = rep(1,n)
+
+E.Z = matrix(rep(lambda.hat, each=n), n, k)*matrix(rep(exp(as.matrix(x)%*%as.matrix(theta.hat)),k),n,k)*
+      (E.Delta*(1-S)^(-1)*Ind.C + matrix(rep(E.mu,k),n,k)*(1-Ind.C))    ####  n by k
+
+########################
+
+###########M-step
+
+lambda.est = apply(E.Z,2,sum)/sum(E.mu*exp(as.matrix(x)%*%as.matrix(theta.hat)))
+
+if(any(is.na(lambda.est))) lambda.est = lambda.ini
+
+
+######################################################################
+#########################################################################
+
+diff.lambda = max(abs(lambda.est-lambda.hat))
+
+lambda.hat = lambda.est
+
+loops = loops+1
+
+}
+
+######### judge end #########
+
+
+W = rowSums(matrix(rep(lambda.hat, each=n), n, k)*
+matrix(rep(exp(as.matrix(x)%*%as.matrix(theta.hat)),k),n,k)*Ind.C) #### n by 1
+
+S = exp(-G.fun(W))
+
+E.Delta = Y*alpha*(1-S)/(alpha-gamma*S) + (1-Y)*(1-alpha)*(1-S)/(1-alpha+gamma*S)
+
+if(r !=0){
+E.mu = E.Delta*(1-(r*W+1)^(-r^(-1)-1))/(1-S) +  (1- E.Delta)*(r*W+1)^(-r^(-1)-1)/S #### n by 1
+      }else E.mu = rep(1,n)
+
+E.Z = matrix(rep(lambda.hat, each=n), n, k)*matrix(rep(exp(as.matrix(x)%*%as.matrix(theta.hat)),k),n,k)*
+      (E.Delta*(1-S)^(-1)*Ind.C + matrix(rep(E.mu,k),n,k)*(1-Ind.C))    ####  n by k
+
+########################
+
+########### score function for zeta
+
+num1 = t(x)%*%as.matrix(E.mu*exp(as.matrix(x)%*%as.matrix(theta.hat))) #### p by 1
+denom1 = sum(E.mu*exp(as.matrix(x)%*%as.matrix(theta.hat)))   #####  1 by 1
+U.1 = t(as.matrix(x - matrix(rep(num1/denom1,each=n),n,p)))%*%as.matrix(apply(
+as.matrix(E.Z),1,sum))
+
+return(U.1)
+
+}
+
+
+##################################
+##### main code
+##################################
+
+loops = 0
+
+diff.zeta = 100
+
+#########################################
+
+order.C = unique(sort(C) )
+
+k = length(order.C)
+
+L.prob = mean(Y)
+
+Ind.C = matrix(rep(order.C,each =n),n,k) <= matrix(rep(C,k),n,k)
+
+theta.hat = CSEM_M(n, p, k, x, Ind.C, alpha, beta )
+
+
+#################################
+##### variance estimate  for theta.hat
+
+I <- matrix(0, p, p)
+
+h = 10^(-5)  #### tuning parameter
+
+E = h * diag(rep(1,p))  ### p by p
+
+for (i in 1:p){
+
+muEi1 = theta.hat - 2*E[,i]
+muEi2 = theta.hat - E[,i]
+muEi3 = theta.hat + E[,i]
+muEi4 = theta.hat + 2*E[,i]
+
+I1 = profile(muEi1)
+I2 = profile(muEi2)
+I3 = profile(muEi3)
+I4 = profile(muEi4)
+
+I[i,] = -( I1 - 8*I2 + 8*I3 - I4 )/(12*h)
+
+}
+
+I = (I+t(I))/2
+
+sd.theta = sqrt(diag(solve(I)))
+
+p.value = 2*(1 - pnorm(abs(theta.hat), 0, sd.theta))
+
+print(c('r=',r))
+
+print(c('theta.hat=',theta.hat))
+print(c('sd.theta=',sd.theta))
+print(c('p.value=',p.value))
+
+print(c('left=',left.CR))
+
+time2 = date()
+
+print(rbind(time1,time2))
+
+
+
